@@ -136,6 +136,8 @@ class ECSTask(luigi.Task):
     task_def_arn = luigi.OptionalParameter(default=None)
     task_def = luigi.OptionalParameter(default=None)
     cluster = luigi.Parameter(default='default')
+    placement_contraints = luigi.OptionalParameter(default=[])
+    placement_strategy = luigi.OptionalParameter(default=[])
 
     @property
     def ecs_task_ids(self):
@@ -163,6 +165,31 @@ class ECSTask(luigi.Task):
         """
         pass
 
+    def _run_task(overrides):
+        retries = 0
+
+        while retries < 5:
+            response = client.run_task(taskDefinition=self.task_def_arn,
+                                       overrides=overrides,
+                                       cluster=self.cluster,
+                                       placementConstraints=self.placement_contraints,
+                                       placementStrategy=self.placement_strategy)
+
+            if len(response["failures"]) == 0 and len(response["tasks"]) > 0:
+                return response["tasks"]
+
+            # retry again if we are out of CPU
+            if len(response["failures"]) > 0:
+                reasons = map(lambda failure: failure["reason"], response["failures"])
+                if "RESOURCE:CPU" not in reasons:
+                    raise Exception("Failed for reasons {}".format(",".join(reasons)))
+
+            time.delay(10 * 2**retries)
+            retries += 1
+
+        raise Exception("Failed to run task after {} attempts".format(retries))
+
+
     def run(self):
         if (not self.task_def and not self.task_def_arn) or \
                 (self.task_def and self.task_def_arn):
@@ -179,10 +206,9 @@ class ECSTask(luigi.Task):
             overrides = {'containerOverrides': self.command}
         else:
             overrides = {}
-        response = client.run_task(taskDefinition=self.task_def_arn,
-                                   overrides=overrides,
-                                   cluster=self.cluster)
-        self._task_ids = [task['taskArn'] for task in response['tasks']]
+
+        tasks = self._run_task(overrides)
+        self._task_ids = [task['taskArn'] for task in tasks]
 
         # Wait on task completion
         _track_tasks(self._task_ids, self.cluster)
