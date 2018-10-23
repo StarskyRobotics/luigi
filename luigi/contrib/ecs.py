@@ -168,10 +168,11 @@ class ECSTask(luigi.Task):
     def _run_task(self, overrides):
         attempt = 0
         max_attempts = 5
+        reasons = []
 
         while True:
             if attempt == max_attempts:
-                raise Exception("Failed to run task")
+                raise Exception("Failed to run task {}".format(reasons))
 
             response = client.run_task(taskDefinition=self.task_def_arn,
                                        overrides=overrides,
@@ -186,6 +187,7 @@ class ECSTask(luigi.Task):
             task = client.describe_task_definition(taskDefinition=self.task_def_arn)["taskDefinition"]
             instances = client.list_container_instances(cluster=self.cluster)["containerInstanceArns"]
             cpu_req = map(lambda container: container["cpu"], task["containerDefinitions"])
+            logger.debug("CPU requirement {}".format(cpu_req))
 
             # wait for CPU resources
             if "RESOURCE:CPU" in reasons:
