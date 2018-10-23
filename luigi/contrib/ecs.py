@@ -165,7 +165,7 @@ class ECSTask(luigi.Task):
         """
         pass
 
-    def _run_task(overrides):
+    def _run_task(self, overrides):
         attempt = 0
         max_attempts = 5
 
@@ -200,6 +200,8 @@ class ECSTask(luigi.Task):
                     cpu_avail = map(lambda z: z["integerValue"], map(lambda x: filter(lambda y: y["CPU"] , x)[0], remain))
                     if sum(cpu_avail) >= sum(cpu_req):
                         break
+
+                    logger.debug("Waiting {} seconds for CPU resource to be available".format(2**i))
                     time.sleep(2**i)
                     i += 1
 
