@@ -166,9 +166,10 @@ class ECSTask(luigi.Task):
         pass
 
     def _run_task(overrides):
+        max_retries = 10
         retries = 0
 
-        while retries < 5:
+        while True:
             response = client.run_task(taskDefinition=self.task_def_arn,
                                        overrides=overrides,
                                        cluster=self.cluster,
@@ -184,11 +185,13 @@ class ECSTask(luigi.Task):
                 if "RESOURCE:CPU" not in reasons:
                     raise Exception("Failed for reasons {}".format(",".join(reasons)))
 
-            time.delay(10 * 2**retries)
+            if retries == max_retries:
+                raise Exception("Failed to run task after {} attempts".format(retries))
+
+            wait_time = 2 * 2**retries
+            logger.debug('No CPU resource available, sleeping for {0} seconds'.format(wait_time))
+            time.delay(wait_time)
             retries += 1
-
-        raise Exception("Failed to run task after {} attempts".format(retries))
-
 
     def run(self):
         if (not self.task_def and not self.task_def_arn) or \
