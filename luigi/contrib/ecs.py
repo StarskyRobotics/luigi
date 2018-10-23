@@ -183,27 +183,27 @@ class ECSTask(luigi.Task):
                 return response["tasks"]
 
             reasons = map(lambda failure: failure["reason"], response["failures"])
-
             task = client.describe_task_definition(taskDefinition=self.task_def_arn)["taskDefinition"]
-            cpu_req = map(lambda container: container["cpu"], task["containerDefinitions"])
-            mem_req = map(lambda container: container["memoryReservation"], task["containerDefinitions"])
-
             instances = client.list_container_instances(cluster=self.cluster)["containerInstanceArns"]
+            cpu_req = map(lambda container: container["cpu"], task["containerDefinitions"])
 
             # wait for CPU resources
-            # TODO: wait for mem resources
             if "RESOURCE:CPU" in reasons:
                 i = 0
                 while True and i < 8:
-                    stats = client.describe_container_instances(cluster=self.cluster, containerInstances=instances)["containerInstances"]
+                    stats = client.describe_container_instances(cluster=cluster, containerInstances=instances)["containerInstances"]
                     remain = map(lambda stat: stat["remainingResources"], stats)
-                    cpu_avail = map(lambda z: z["integerValue"], map(lambda x: filter(lambda y: y["CPU"] , x)[0], remain))
+                    
+                    cpu_avail = map(lambda z: z["integerValue"], map(lambda x: filter(lambda y: y.get("name", False) == "CPU" , x)[0], remain))
+                    
+                    logger.debug("CPU available {}".format(cpu_avail))
                     if sum(cpu_avail) >= sum(cpu_req):
                         break
 
-                    logger.debug("Waiting {} seconds for CPU resource to be available".format(2**i))
+                    logger.debug("Waiting {} seconds for CPU resource to become available...".format(2**i))
                     time.sleep(2**i)
                     i += 1
+            # TODO: wait for mem resources
 
             attempt += 1
 
