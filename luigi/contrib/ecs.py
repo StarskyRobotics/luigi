@@ -191,9 +191,8 @@ class ECSTask(luigi.Task):
             if "RESOURCE:CPU" in reasons:
                 i = 0
                 while True and i < 8:
-                    stats = client.describe_container_instances(cluster=cluster, containerInstances=instances)["containerInstances"]
+                    stats = client.describe_container_instances(cluster=self.cluster, containerInstances=instances)["containerInstances"]
                     remain = map(lambda stat: stat["remainingResources"], stats)
-                    
                     cpu_avail = map(lambda z: z["integerValue"], map(lambda x: filter(lambda y: y.get("name", False) == "CPU" , x)[0], remain))
                     
                     logger.debug("CPU available {}".format(cpu_avail))
