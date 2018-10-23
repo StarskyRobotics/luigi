@@ -184,7 +184,7 @@ class ECSTask(luigi.Task):
 
             reasons = map(lambda failure: failure["reason"], response["failures"])
 
-            task = client.describe_task_definition(taskDefinition=self.task_def_arn)
+            task = client.describe_task_definition(taskDefinition=self.task_def_arn)["taskDefinition"]
             cpu_req = map(lambda container: container["cpu"], task["containerDefinitions"])
             mem_req = map(lambda container: container["memoryReservation"], task["containerDefinitions"])
 
