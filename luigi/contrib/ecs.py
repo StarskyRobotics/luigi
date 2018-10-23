@@ -166,10 +166,13 @@ class ECSTask(luigi.Task):
         pass
 
     def _run_task(overrides):
-        max_retries = 10
-        retries = 0
+        attempt = 0
+        max_attempts = 5
 
         while True:
+            if attempt == max_attempts:
+                raise Exception("Failed to run task")
+
             response = client.run_task(taskDefinition=self.task_def_arn,
                                        overrides=overrides,
                                        cluster=self.cluster,
@@ -179,19 +182,28 @@ class ECSTask(luigi.Task):
             if len(response["failures"]) == 0 and len(response["tasks"]) > 0:
                 return response["tasks"]
 
-            # retry again if we are out of CPU
-            if len(response["failures"]) > 0:
-                reasons = map(lambda failure: failure["reason"], response["failures"])
-                if "RESOURCE:CPU" not in reasons:
-                    raise Exception("Failed for reasons {}".format(",".join(reasons)))
+            reasons = map(lambda failure: failure["reason"], response["failures"])
 
-            if retries == max_retries:
-                raise Exception("Failed to run task after {} attempts".format(retries))
+            task = client.describe_task_definition(taskDefinition=self.task_def_arn)
+            cpu_req = map(lambda container: container["cpu"], task["containerDefinitions"])
+            mem_req = map(lambda container: container["memoryReservation"], task["containerDefinitions"])
 
-            wait_time = 2 * 2**retries
-            logger.debug('No CPU resource available, sleeping for {0} seconds'.format(wait_time))
-            time.delay(wait_time)
-            retries += 1
+            instances = client.list_container_instances(cluster=self.cluster)["containerInstanceArns"]
+
+            # wait for CPU resources
+            # TODO: wait for mem resources
+            if "RESOURCE:CPU" in reasons:
+                i = 0
+                while True and i < 8:
+                    stats = client.describe_container_instances(cluster=self.cluster, containerInstances=instances)["containerInstances"]
+                    remain = map(lambda stat: stat["remainingResources"], stats)
+                    cpu_avail = map(lambda z: z["integerValue"], map(lambda x: filter(lambda y: y["CPU"] , x)[0], remain))
+                    if sum(cpu_avail) >= sum(cpu_req):
+                        break
+                    time.sleep(2**i)
+                    i += 1
+
+            attempt += 1
 
     def run(self):
         if (not self.task_def and not self.task_def_arn) or \
